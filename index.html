@@ -4,9 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>When should I leave for the airport?</title>
+<meta name="description" content="Nate Silver's airport arrival-time model, calibrated for every UK airport and Dublin.">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<meta name="theme-color" content="#1f6feb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1116" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Airport time">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
 /* ============================================================
-   SECTION 4 — STYLES  (mobile-first, light + dark)
+   STYLES  (mobile-first, light + dark)
    ============================================================ */
 :root {
   --bg: #f6f7f9;
@@ -93,11 +103,19 @@ label.q { display: block; font-weight: 600; font-size: .95rem; margin-bottom: .4
   background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600;
 }
 .seg.stack button { flex-basis: 100%; text-align: left; }
+.seg button[aria-pressed="true"] .hint { color: inherit; opacity: .85; }
 
-input[type="number"], input[type="time"], input[type="date"] {
+input[type="number"], input[type="time"], input[type="date"], input[type="text"], select {
   width: 100%; min-height: 46px; padding: .5rem .7rem;
   font: inherit; color: var(--ink); background: var(--bg);
   border: 1px solid var(--line); border-radius: 10px;
+}
+select {
+  appearance: none; -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-dim) 50%), linear-gradient(135deg, var(--ink-dim) 50%, transparent 50%);
+  background-position: calc(100% - 1.1rem) 50%, calc(100% - .75rem) 50%;
+  background-size: .35rem .35rem; background-repeat: no-repeat;
+  padding-right: 2rem;
 }
 .row { display: flex; gap: .6rem; }
 .row > * { flex: 1; }
@@ -120,6 +138,28 @@ tr.total td { font-weight: 700; border-bottom: none; border-top: 2px solid var(-
 
 .note { background: var(--warn-bg); color: var(--warn-ink); border-radius: 10px; padding: .7rem .85rem; font-size: .86rem; margin-top: .9rem; }
 
+/* calendar buttons */
+.actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.btn {
+  flex: 1 1 10rem; min-height: 46px; display: inline-flex; align-items: center; justify-content: center;
+  padding: .55rem .8rem; font: inherit; font-size: .92rem; font-weight: 600; text-decoration: none;
+  border-radius: 10px; cursor: pointer; border: 1px solid var(--accent);
+  background: var(--accent); color: var(--accent-ink);
+}
+.btn.secondary { background: var(--bg); color: var(--ink); border-color: var(--line); }
+.btn:disabled { opacity: .5; cursor: default; }
+
+/* install banner */
+.install {
+  display: flex; align-items: center; gap: .6rem;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: .6rem .6rem .6rem .9rem; margin-top: .25rem; font-size: .88rem;
+}
+.install[hidden] { display: none; }
+.install span { flex: 1; }
+.install .btn { flex: 0 0 auto; min-height: 38px; padding: .35rem .8rem; }
+.install .x { background: none; border: 0; color: var(--ink-dim); font-size: 1.3rem; line-height: 1; padding: .3rem .4rem; cursor: pointer; }
+
 footer { color: var(--ink-dim); font-size: .82rem; padding: .5rem 0 0; }
 footer a { color: var(--accent); }
 footer p { margin: 0 0 .6rem; }
@@ -130,7 +170,12 @@ footer p { margin: 0 0 .6rem; }
 
 <header>
   <h1>When should I leave for the airport?</h1>
-  <p>Nate Silver's arrival-time model, adapted for Belfast and Dublin.</p>
+  <p>Nate Silver's arrival-time model, adapted for every UK airport and Dublin.</p>
+  <div class="install" id="install" hidden>
+    <span id="installText"></span>
+    <button type="button" class="btn" id="installBtn" hidden>Install</button>
+    <button type="button" class="x" id="installClose" aria-label="Dismiss">×</button>
+  </div>
 </header>
 
 <div class="summary" id="summary" role="status" aria-live="polite">
@@ -144,7 +189,7 @@ footer p { margin: 0 0 .6rem; }
 
   <div class="field">
     <label class="q" for="apt">Departing from</label>
-    <div class="seg" id="apt"></div>
+    <select id="apt"></select>
     <div class="info" id="aptInfo"></div>
   </div>
 
@@ -162,6 +207,11 @@ footer p { margin: 0 0 .6rem; }
   </div>
 
   <div class="field">
+    <label class="q" for="flight">Flight number <span class="hint">Optional — goes in the calendar entry.</span></label>
+    <input type="text" id="flight" placeholder="e.g. EZY123" autocomplete="off" autocapitalize="characters" maxlength="12">
+  </div>
+
+  <div class="field">
     <label class="q" for="commute">Door-to-airport travel time
       <span class="hint">Your honest estimate — the model adds 30% for traffic, as Silver recommends.</span>
     </label>
@@ -172,7 +222,7 @@ footer p { margin: 0 0 .6rem; }
 <div class="card">
   <h2>At the airport</h2>
 
-  <div class="field">
+  <div class="field" id="securityField">
     <label class="q">Security</label>
     <div class="seg" id="security"></div>
   </div>
@@ -199,6 +249,15 @@ footer p { margin: 0 0 .6rem; }
 </div>
 
 <div class="card">
+  <h2>Add to calendar</h2>
+  <div class="actions">
+    <button type="button" class="btn" id="addCal">Download .ics</button>
+    <a class="btn secondary" id="gcal" href="#" target="_blank" rel="noopener">Google Calendar</a>
+  </div>
+  <p class="hint">The .ics works with Apple Calendar, Outlook and most others: a "leave home" event with reminders 15 minutes before and on time, plus the flight itself.</p>
+</div>
+
+<div class="card">
   <h2>How that adds up</h2>
   <table id="breakdown"></table>
   <div class="note" id="official"></div>
@@ -209,9 +268,11 @@ footer p { margin: 0 0 .6rem; }
      <a href="https://www.natesilver.net/p/how-soon-should-you-arrive-at-the-airport" target="_blank" rel="noopener">How soon should you arrive at the airport?</a>
      — a 60-minute baseline inside the terminal, plus signed adjustments, and a commute estimate rounded up 30%.</p>
   <p><strong>What's been changed.</strong> Silver's numbers are calibrated for US airports: TSA PreCheck,
-     US domestic flights, JFK/DFW/O'Hare as the busy tier. None of that transfers to Belfast or Dublin, so
+     US domestic flights, JFK/DFW/O'Hare as the busy tier. None of that transfers to the UK or Ireland, so
      the adjustment categories here are local ones — paid Fast Track in place of PreCheck, Common Travel
      Area flights in place of "domestic", and Dublin's US preclearance, which has no US equivalent.
+     Airport size is set by one rule from annual passenger numbers (tiny under 1m, small under 5m, medium under 15m,
+     large under 40m, very large above), and island airports skip the security-queue penalty.
      The arithmetic is his; the calibration is an adaptation and should be treated as such.</p>
   <p>This is a planning aid, not a guarantee. Silver missed about 0.5% of 800 flights using it —
      mostly by misjudging the commute, not the airport.</p>
@@ -219,280 +280,7 @@ footer p { margin: 0 0 .6rem; }
 
 </div>
 
-<script>
-/* ============================================================
-   SECTION 1 — AIRPORT DATA
-   To add an airport, append one object here. Nothing else needs
-   to change: the picker, info card and route options all read
-   from this block.
-   ============================================================ */
-const AIRPORTS = {
-  BHD: {
-    name: "Belfast City",
-    full: "George Best Belfast City",
-    sizeAdj: -5,
-    sizeLabel: "Small — compact and close in",
-    paxPerYear: "~2 million",
-    terminals: "Single terminal",
-    fastTrack: true,
-    distance: "~4 km from Belfast city centre",
-    peak: { start: "06:00", end: "08:00", adj: 5, note: "early business bank to London" },
-    official: { shortHaul: 120, longHaul: null, verified: false },
-    routes: ["uk", "cta", "europe"]
-  },
-  BFS: {
-    name: "Belfast Intl",
-    full: "Belfast International (Aldergrove)",
-    sizeAdj: 0,
-    sizeLabel: "Medium — busiest in Northern Ireland",
-    paxPerYear: "~6 million",
-    terminals: "Single terminal",
-    fastTrack: true,
-    distance: "~20 km from Belfast city centre",
-    peak: { start: "05:00", end: "08:00", adj: 10, note: "early low-cost departure bank" },
-    official: { shortHaul: 120, longHaul: 180, verified: true },
-    routes: ["uk", "cta", "europe", "longHaul"]
-  },
-  DUB: {
-    name: "Dublin",
-    full: "Dublin Airport",
-    sizeAdj: 15,
-    sizeLabel: "Large — busiest in Ireland, two terminals",
-    paxPerYear: "~34 million",
-    terminals: "T1 and T2 — check which before you go",
-    fastTrack: true,
-    distance: "~10 km from Dublin city centre",
-    peak: { start: "05:00", end: "12:00", adj: 10, note: "T2 morning transatlantic bank" },
-    official: { shortHaul: 120, longHaul: 180, verified: true },
-    routes: ["cta", "europe", "usPreclear", "longHaul"]
-  }
-};
-
-const ROUTES = {
-  uk:         { label: "Great Britain",            sub: "domestic — no immigration",           adj: 0,  long: false },
-  cta:        { label: "Ireland / UK",             sub: "Common Travel Area — no immigration", adj: 0,  long: false },
-  europe:     { label: "Europe",                   sub: "short-haul international",            adj: 10, long: false },
-  usPreclear: { label: "United States",            sub: "full US preclearance before you fly", adj: 60, long: true  },
-  longHaul:   { label: "Long-haul (not the US)",   sub: "bigger aircraft, longer queues",      adj: 25, long: true  }
-};
-
-/* ============================================================
-   SECTION 2 — THE MODEL (pure functions)
-   ============================================================ */
-const BASELINE = 60;        // Silver's default: doors to departure
-const COMMUTE_FACTOR = 1.3; // Silver: "round up that commute time by 30 percent"
-
-function toMinutes(hhmm) {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + m;
-}
-
-function inPeak(peak, departHHMM) {
-  if (!peak) return false;
-  const t = toMinutes(departHHMM);
-  return t >= toMinutes(peak.start) && t < toMinutes(peak.end);
-}
-
-/**
- * Returns { total, lines: [{label, minutes}] }.
- * `total` is minutes from walking through the terminal doors to departure.
- */
-function computeBuffer(i) {
-  const airport = AIRPORTS[i.airport];
-  const route = ROUTES[i.route];
-  const lines = [];
-  const add = (label, minutes) => { if (minutes) lines.push({ label, minutes }); };
-
-  lines.push({ label: "Baseline — inside the terminal to departure", minutes: BASELINE, base: true });
-
-  add(`${airport.full} — ${airport.sizeLabel.split(" — ")[0].toLowerCase()} airport`, airport.sizeAdj);
-  if (i.familiar) add("You know this airport well", -5);
-
-  if (i.security === "standard") add("Standard security queue (no Fast Track)", 20);
-  if (inPeak(airport.peak, i.time)) add(`Departing during the ${airport.peak.note}`, airport.peak.adj);
-
-  add(route.label + " — " + route.sub, route.adj);
-  if (i.bags === "checked") add("Bag drop / check-in desk", 20);
-
-  if (i.conditions === "holiday") add("Holiday peak", i.security === "fast" ? 15 : 30);
-  if (i.conditions === "storm") add("Severe weather", i.security === "fast" ? 10 : 20);
-
-  if (i.connection) add("You have an onward connection", 10);
-  if (i.highStakes) add("You genuinely cannot miss this one", 60);
-
-  if (i.feeling === "love") add("You like being at airports", 20);
-  if (i.feeling === "hate") add("You'd rather not linger", -5);
-
-  const total = lines.reduce((s, l) => s + l.minutes, 0);
-  return { total, lines };
-}
-
-function computePlan(i) {
-  const buffer = computeBuffer(i);
-  const commute = Math.round(i.commute * COMMUTE_FACTOR);
-  const depart = new Date(`${i.date}T${i.time}`);
-  const atTerminal = new Date(depart.getTime() - buffer.total * 60000);
-  const leaveHome = new Date(atTerminal.getTime() - commute * 60000);
-  return { buffer, commute, depart, atTerminal, leaveHome };
-}
-
-/* ============================================================
-   SECTION 3 — STATE, RENDER, EVENTS
-   ============================================================ */
-const state = {
-  airport: "BFS",
-  route: "uk",
-  date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10),
-  time: "07:00",
-  commute: 30,
-  security: "standard",
-  bags: "hand",
-  conditions: "normal",
-  feeling: "neutral",
-  familiar: false,
-  connection: false,
-  highStakes: false
-};
-
-const $ = id => document.getElementById(id);
-
-function segment(el, options, selectedKey, onPick) {
-  el.innerHTML = "";
-  options.forEach(o => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.setAttribute("aria-pressed", String(o.key === selectedKey));
-    b.innerHTML = o.sub
-      ? `${o.label}<span class="hint">${o.sub}</span>`
-      : o.label;
-    b.onclick = () => { onPick(o.key); render(); };
-    el.appendChild(b);
-  });
-}
-
-function toggles(el, items) {
-  el.innerHTML = "";
-  items.forEach(o => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.setAttribute("aria-pressed", String(!!state[o.key]));
-    b.innerHTML = `${state[o.key] ? "✓ " : ""}${o.label}<span class="hint">${o.sub}</span>`;
-    b.onclick = () => { state[o.key] = !state[o.key]; render(); };
-    el.appendChild(b);
-  });
-}
-
-function fmtTime(d) {
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-}
-
-function fmtDayOffset(target, reference) {
-  const a = new Date(target.getFullYear(), target.getMonth(), target.getDate());
-  const b = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
-  const days = Math.round((a - b) / 86400000);
-  if (days === 0) return "";
-  if (days === -1) return " the day before";
-  return ` ${target.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })}`;
-}
-
-function fmtDuration(mins) {
-  const h = Math.floor(mins / 60), m = mins % 60;
-  if (!h) return `${m} min`;
-  return m ? `${h}h ${m.toString().padStart(2, "0")}` : `${h}h`;
-}
-
-function render() {
-  const airport = AIRPORTS[state.airport];
-
-  // airport picker
-  segment($("apt"), Object.keys(AIRPORTS).map(k => ({ key: k, label: AIRPORTS[k].name })),
-    state.airport, k => {
-      state.airport = k;
-      if (!AIRPORTS[k].routes.includes(state.route)) state.route = AIRPORTS[k].routes[0];
-    });
-
-  // airport info card
-  $("aptInfo").innerHTML = `
-    <div class="size">${airport.sizeLabel}</div>
-    <dl>
-      <dt>Passengers</dt><dd>${airport.paxPerYear} a year</dd>
-      <dt>Layout</dt><dd>${airport.terminals}</dd>
-      <dt>Location</dt><dd>${airport.distance}</dd>
-      <dt>Fast Track</dt><dd>${airport.fastTrack ? "Available to buy" : "Not available"}</dd>
-    </dl>`;
-
-  // route options for this airport
-  segment($("route"), airport.routes.map(k => ({ key: k, label: ROUTES[k].label, sub: ROUTES[k].sub })),
-    state.route, k => state.route = k);
-
-  segment($("security"), [
-    { key: "fast", label: "Fast Track" },
-    { key: "standard", label: "Standard" }
-  ], state.security, k => state.security = k);
-
-  segment($("bags"), [
-    { key: "hand", label: "Hand luggage" },
-    { key: "checked", label: "Checking a bag" }
-  ], state.bags, k => state.bags = k);
-
-  segment($("conditions"), [
-    { key: "normal", label: "Normal" },
-    { key: "holiday", label: "Holiday peak" },
-    { key: "storm", label: "Bad weather" }
-  ], state.conditions, k => state.conditions = k);
-
-  segment($("feeling"), [
-    { key: "love", label: "Love them" },
-    { key: "neutral", label: "Neutral" },
-    { key: "hate", label: "Hate them" }
-  ], state.feeling, k => state.feeling = k);
-
-  toggles($("flags"), [
-    { key: "familiar", label: "I fly from here often", sub: "You know the car park and the shortcuts" },
-    { key: "connection", label: "I have an onward connection", sub: "Missing this one costs you the next one too" },
-    { key: "highStakes", label: "I really cannot miss this flight", sub: "A wedding, or the only flight today" }
-  ]);
-
-  // ---- results ----
-  const p = computePlan(state);
-
-  $("leaveTime").textContent = fmtTime(p.leaveHome) + fmtDayOffset(p.leaveHome, p.depart);
-  $("terminalTime").textContent =
-    `Inside the terminal by ${fmtTime(p.atTerminal)}${fmtDayOffset(p.atTerminal, p.depart)} · ` +
-    `${p.commute} min travel (${state.commute} + 30%)`;
-
-  const rows = p.buffer.lines.map(l => {
-    const cls = l.base ? "base" : (l.minutes > 0 ? "plus" : "minus");
-    const sign = l.base ? "" : (l.minutes > 0 ? "+" : "−");
-    return `<tr><td>${l.label}</td><td class="n ${cls}">${sign}${Math.abs(l.minutes)} min</td></tr>`;
-  }).join("");
-
-  $("breakdown").innerHTML = rows + `
-    <tr class="total"><td>Time at the airport</td><td class="n">${fmtDuration(p.buffer.total)}</td></tr>
-    <tr class="total"><td>Travel there (+30%)</td><td class="n">${fmtDuration(p.commute)}</td></tr>
-    <tr class="total"><td>Total before departure</td><td class="n">${fmtDuration(p.buffer.total + p.commute)}</td></tr>`;
-
-  // official comparison
-  const isLong = ROUTES[state.route].long;
-  const advice = isLong ? (airport.official.longHaul || airport.official.shortHaul) : airport.official.shortHaul;
-  const diff = p.buffer.total - advice;
-  const verb = Math.abs(diff) <= 10 ? "lands about the same"
-             : diff > 0 ? `is ${fmtDuration(diff)} more cautious`
-             : `is ${fmtDuration(-diff)} tighter`;
-  $("official").innerHTML =
-    `<strong>${airport.full}</strong> ${airport.official.verified ? "advises" : "is generally said to want"} ` +
-    `<strong>${fmtDuration(advice)}</strong> before ${isLong ? "a long-haul" : "a short-haul"} flight. ` +
-    `This model says <strong>${fmtDuration(p.buffer.total)}</strong> — it ${verb}.` +
-    (airport.official.verified ? "" : " (Not confirmed against the airport's own guidance.)");
-}
-
-// plain inputs
-$("date").value = state.date;
-$("date").oninput = e => { state.date = e.target.value; render(); };
-$("time").oninput = e => { state.time = e.target.value; render(); };
-$("commute").oninput = e => { state.commute = Math.max(0, Number(e.target.value) || 0); render(); };
-
-render();
-</script>
+<script src="./airports.js"></script>
+<script src="./app.js"></script>
 </body>
 </html>
