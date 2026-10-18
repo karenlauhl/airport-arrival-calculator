@@ -236,30 +236,70 @@ function save() {
 
 const $ = id => document.getElementById(id);
 
-function segment(el, options, selectedKey, onPick) {
-  el.innerHTML = "";
-  options.forEach(o => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.setAttribute("aria-pressed", String(o.key === selectedKey));
-    b.innerHTML = o.sub
-      ? `${o.label}<span class="hint">${o.sub}</span>`
-      : o.label;
-    b.onclick = () => { onPick(o.key); render(); };
-    el.appendChild(b);
+// Minutes this choice would add or save compared with what's picked now.
+function optionDelta(field, value) {
+  return computeBuffer({ ...state, [field]: value }).total - computeBuffer(state).total;
+}
+
+function fmtDelta(d) {
+  if (!d) return { text: "", cls: "" };
+  return d > 0 ? { text: `+${d} min`, cls: "plus" } : { text: `−${-d} min`, cls: "minus" };
+}
+
+/* Option tiles. Buttons are updated in place while the set of options
+   stays the same, so selection changes animate instead of re-rendering. */
+function tiles(el, items, check) {
+  const keys = items.map(o => o.id).join("|");
+  if (el.dataset.keys !== keys) {
+    el.dataset.keys = keys;
+    el.innerHTML = "";
+    items.forEach(o => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "tile";
+      b.innerHTML = `<span class="t"><span class="label"></span>${o.sub ? '<span class="hint"></span>' : ""}</span>` +
+                    `<span class="end"><span class="delta"></span>${check ? '<span class="check" aria-hidden="true"></span>' : ""}</span>`;
+      el.appendChild(b);
+    });
+  }
+  items.forEach((o, n) => {
+    const b = el.children[n];
+    b.onclick = () => { o.pick(); render(); };
+    b.setAttribute("aria-pressed", String(o.selected));
+    b.querySelector(".label").textContent = o.label;
+    if (o.sub) b.querySelector(".hint").textContent = o.sub;
+    const d = fmtDelta(o.delta);
+    const delta = b.querySelector(".delta");
+    delta.textContent = d.text;
+    delta.className = `delta ${d.cls}`;
   });
 }
 
+function segment(el, field, options) {
+  tiles(el, options.map(o => ({
+    id: o.key, label: o.label, sub: o.sub,
+    selected: o.key === state[field],
+    delta: optionDelta(field, o.key),
+    pick: () => { state[field] = o.key; }
+  })), false);
+}
+
 function toggles(el, items) {
-  el.innerHTML = "";
-  items.forEach(o => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.setAttribute("aria-pressed", String(!!state[o.key]));
-    b.innerHTML = `${state[o.key] ? "✓ " : ""}${o.label}<span class="hint">${o.sub}</span>`;
-    b.onclick = () => { state[o.key] = !state[o.key]; render(); };
-    el.appendChild(b);
-  });
+  tiles(el, items.map(o => ({
+    id: o.key, label: o.label, sub: o.sub,
+    selected: !!state[o.key],
+    delta: optionDelta(o.key, !state[o.key]),
+    pick: () => { state[o.key] = !state[o.key]; }
+  })), true);
+}
+
+// Set text and replay the tick animation only when it actually changes.
+function setText(el, text) {
+  if (el.textContent === text) return;
+  el.textContent = text;
+  el.classList.remove("tick");
+  void el.offsetWidth;
+  el.classList.add("tick");
 }
 
 function fmtTime(d) {
@@ -309,11 +349,19 @@ function buildAirportPicker() {
   };
 }
 
+let shownAirport = null;
+
 function render() {
   const airport = AIRPORTS[state.airport];
   $("apt").value = state.airport;
 
-  // airport info card
+  // airport info, faded in when the airport changes
+  if (shownAirport !== state.airport) {
+    shownAirport = state.airport;
+    $("aptInfo").classList.remove("fade");
+    void $("aptInfo").offsetWidth;
+    $("aptInfo").classList.add("fade");
+  }
   $("aptInfo").innerHTML = `
     <div class="size">${airport.sizeLabel}</div>
     <dl>
@@ -324,31 +372,30 @@ function render() {
     </dl>`;
 
   // route options for this airport
-  segment($("route"), airport.routes.map(k => ({ key: k, label: ROUTES[k].label, sub: ROUTES[k].sub })),
-    state.route, k => state.route = k);
+  segment($("route"), "route", airport.routes.map(k => ({ key: k, label: ROUTES[k].label, sub: ROUTES[k].sub })));
 
   $("securityField").hidden = !hasFastTrackChoice(airport);
-  segment($("security"), [
+  segment($("security"), "security", [
     { key: "fast", label: airport.fastTrack === "premium" ? "Fast Track (premium / status)" : "Fast Track" },
     { key: "standard", label: "Standard" }
-  ], state.security, k => state.security = k);
+  ]);
 
-  segment($("bags"), [
+  segment($("bags"), "bags", [
     { key: "hand", label: "Hand luggage" },
     { key: "checked", label: "Checking a bag" }
-  ], state.bags, k => state.bags = k);
+  ]);
 
-  segment($("conditions"), [
+  segment($("conditions"), "conditions", [
     { key: "normal", label: "Normal" },
     { key: "holiday", label: "Holiday peak" },
     { key: "storm", label: "Bad weather" }
-  ], state.conditions, k => state.conditions = k);
+  ]);
 
-  segment($("feeling"), [
+  segment($("feeling"), "feeling", [
     { key: "love", label: "Love them" },
     { key: "neutral", label: "Neutral" },
     { key: "hate", label: "Hate them" }
-  ], state.feeling, k => state.feeling = k);
+  ]);
 
   toggles($("flags"), [
     { key: "familiar", label: "I fly from here often", sub: "You know the car park and the shortcuts" },
@@ -358,16 +405,22 @@ function render() {
 
   // ---- results ----
   const valid = state.date && state.time;
-  $("addCal").disabled = !valid;
+  $("addCal").disabled = $("addCal2").disabled = !valid;
   if (!valid) return;
   const p = computePlan(state);
 
-  $("leaveTime").textContent = fmtTime(p.leaveHome) + fmtDayOffset(p.leaveHome, p.depart);
-  $("terminalTime").textContent =
-    `Inside the terminal by ${fmtTime(p.atTerminal)}${fmtDayOffset(p.atTerminal, p.depart)} · ` +
-    `${p.commute} min travel (${state.commute} + 30%)`;
+  const leave = fmtTime(p.leaveHome) + fmtDayOffset(p.leaveHome, p.depart);
+  const inside = `${fmtTime(p.atTerminal)}${fmtDayOffset(p.atTerminal, p.depart)}`;
+  setText($("leaveTime"), leave);
+  setText($("barTime"), leave);
+  $("terminalTime").textContent = `Inside the terminal by ${inside} · flight at ${fmtTime(p.depart)}`;
+  $("barSub").textContent = `Inside by ${inside} · flight ${fmtTime(p.depart)}`;
+  $("panelTotals").innerHTML = `
+    <dt>Time at the airport</dt><dd>${fmtDuration(p.buffer.total)}</dd>
+    <dt>Travel there (${state.commute} + 30%)</dt><dd>${fmtDuration(p.commute)}</dd>
+    <dt>Total before departure</dt><dd>${fmtDuration(p.buffer.total + p.commute)}</dd>`;
 
-  $("gcal").href = googleCalendarUrl(state, p);
+  $("gcal").href = $("gcal2").href = googleCalendarUrl(state, p);
 
   const rows = p.buffer.lines.map(l => {
     const cls = l.base ? "base" : (l.minutes > 0 ? "plus" : "minus");
@@ -403,10 +456,20 @@ $("time").oninput = e => { state.time = e.target.value; render(); };
 $("flight").oninput = e => { state.flight = e.target.value; render(); };
 $("commute").value = state.commute;
 $("commute").oninput = e => { state.commute = Math.max(0, Number(e.target.value) || 0); render(); };
-$("addCal").onclick = downloadICS;
+$("addCal").onclick = $("addCal2").onclick = downloadICS;
+$("bar").onclick = () => $("plan").scrollIntoView({ behavior: "smooth", block: "start" });
 
 buildAirportPicker();
 render();
+
+// Sections rise into view as you scroll. Skipped when motion is reduced.
+if ("IntersectionObserver" in window && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  document.documentElement.classList.add("reveal");
+  const io = new IntersectionObserver(entries => entries.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+  }), { rootMargin: "0px 0px -8% 0px" });
+  document.querySelectorAll(".step").forEach(el => io.observe(el));
+}
 
 /* ============================================================
    SECTION 5 — INSTALL AS AN APP
