@@ -7,6 +7,7 @@
    Fields:
      region     picker group within the country
      lat, lon   airport position, for "Use my location"
+     rail       true where a train, metro or tram stops at the terminal
      roadFactor optional: road distance ÷ straight line, where roads go
                 the long way round (default 1.25–1.35)
      landmass   only for island airports — see LANDMASSES; otherwise
@@ -42,43 +43,43 @@ const TINY_OFFICIAL = { shortHaul: 60, longHaul: null, verified: false };
 
 const RAW_AIRPORTS = {
   /* ---- London ---- */
-  LHR: { region: "London", lat: 51.47, lon: -0.454, name: "Heathrow", full: "London Heathrow", pax: 84.5,
+  LHR: { region: "London", lat: 51.47, lon: -0.454, rail: true, name: "Heathrow", full: "London Heathrow", pax: 84.5,
     blurb: "the UK's busiest, four terminals", terminals: "T2, T3, T4, T5 — check which; they're far apart",
     distance: "~24 km west of central London", fastTrack: "premium",
     peak: { start: "06:00", end: "09:00", adj: 10, note: "morning long-haul arrivals and short-haul departure bank" },
     routes: ["uk", "cta", "europe", "longHaul"] },
-  LGW: { region: "London", lat: 51.153, lon: -0.182, name: "Gatwick", full: "London Gatwick", pax: 42.8,
+  LGW: { region: "London", lat: 51.153, lon: -0.182, rail: true, name: "Gatwick", full: "London Gatwick", pax: 42.8,
     blurb: "two terminals, heavy holiday traffic", terminals: "North and South — check which",
     distance: "~45 km south of central London", fastTrack: true,
     peak: { start: "05:00", end: "08:30", adj: 10, note: "early holiday departure bank" },
     routes: ["uk", "cta", "europe", "longHaul"] },
-  STN: { region: "London", lat: 51.885, lon: 0.235, name: "Stansted", full: "London Stansted", pax: 29.8,
+  STN: { region: "London", lat: 51.885, lon: 0.235, rail: true, name: "Stansted", full: "London Stansted", pax: 29.8,
     blurb: "low-cost hub, long early queues", terminals: "Single terminal, satellite gates by shuttle",
     distance: "~55 km north-east of central London", fastTrack: true,
     peak: { start: "05:00", end: "08:00", adj: 10, note: "early low-cost departure bank" },
     routes: ["uk", "cta", "europe", "longHaul"] },
-  LTN: { region: "London", lat: 51.875, lon: -0.368, name: "Luton", full: "London Luton", pax: 17.8,
+  LTN: { region: "London", lat: 51.875, lon: -0.368, rail: true, name: "Luton", full: "London Luton", pax: 17.8,
     blurb: "low-cost, single terminal", terminals: "Single terminal",
     distance: "~55 km north of central London", fastTrack: true,
     peak: { start: "05:00", end: "08:00", adj: 10, note: "early low-cost departure bank" },
     routes: ["uk", "cta", "europe"] },
-  LCY: { region: "London", lat: 51.505, lon: 0.055, name: "London City", full: "London City", pax: 3.6,
+  LCY: { region: "London", lat: 51.505, lon: 0.055, rail: true, name: "London City", full: "London City", pax: 3.6,
     blurb: "business-focused, very quick to get through", terminals: "Single terminal",
     distance: "~11 km east of central London", fastTrack: false,
     peak: { start: "06:00", end: "09:00", adj: 5, note: "morning business bank" },
     routes: ["uk", "cta", "europe"] },
-  SEN: { region: "London", lat: 51.571, lon: 0.696, name: "Southend", full: "London Southend", pax: 0.7,
+  SEN: { region: "London", lat: 51.571, lon: 0.696, rail: true, name: "Southend", full: "London Southend", pax: 0.7,
     blurb: "quiet single terminal", terminals: "Single terminal",
     distance: "~65 km east of central London, next to Southend", fastTrack: false,
     routes: ["europe"] },
 
   /* ---- England ---- */
-  MAN: { region: "England", lat: 53.354, lon: -2.275, name: "Manchester", full: "Manchester Airport", pax: 32.1,
+  MAN: { region: "England", lat: 53.354, lon: -2.275, rail: true, name: "Manchester", full: "Manchester Airport", pax: 32.1,
     blurb: "busiest outside London, multiple terminals", terminals: "T1/T3 and T2 — check which",
     distance: "~14 km south of Manchester", fastTrack: true,
     peak: { start: "05:00", end: "08:00", adj: 10, note: "early holiday departure bank" },
     routes: ["uk", "cta", "europe", "longHaul"] },
-  BHX: { region: "England", lat: 52.454, lon: -1.748, name: "Birmingham", full: "Birmingham Airport", pax: 13.5,
+  BHX: { region: "England", lat: 52.454, lon: -1.748, rail: true, name: "Birmingham", full: "Birmingham Airport", pax: 13.5,
     blurb: "single terminal, busy mornings", terminals: "Single terminal",
     distance: "~10 km east of Birmingham", fastTrack: true,
     routes: ["uk", "cta", "europe", "longHaul"] },
@@ -90,7 +91,7 @@ const RAW_AIRPORTS = {
     blurb: "single terminal, low-cost heavy", terminals: "Single terminal",
     distance: "~12 km south-east of Liverpool", fastTrack: true,
     routes: ["uk", "cta", "europe"] },
-  NCL: { region: "England", lat: 55.037, lon: -1.692, name: "Newcastle", full: "Newcastle International", pax: 5.0,
+  NCL: { region: "England", lat: 55.037, lon: -1.692, rail: true, name: "Newcastle", full: "Newcastle International", pax: 5.0,
     blurb: "single terminal", terminals: "Single terminal",
     distance: "~10 km north-west of Newcastle", fastTrack: true,
     routes: ["uk", "cta", "europe", "longHaul"] },
@@ -110,7 +111,7 @@ const RAW_AIRPORTS = {
     blurb: "quiet single terminal", terminals: "Single terminal",
     distance: "~7 km east of Exeter", fastTrack: null,
     routes: ["uk", "cta", "europe"] },
-  SOU: { region: "England", lat: 50.95, lon: -1.357, name: "Southampton", full: "Southampton Airport", pax: 0.8,
+  SOU: { region: "England", lat: 50.95, lon: -1.357, rail: true, name: "Southampton", full: "Southampton Airport", pax: 0.8,
     blurb: "quiet, station right outside", terminals: "Single terminal",
     distance: "~6 km north of Southampton, own railway station", fastTrack: null,
     routes: ["uk", "cta", "europe"] },
@@ -140,7 +141,7 @@ const RAW_AIRPORTS = {
     routes: ["uk"] },
 
   /* ---- Scotland ---- */
-  EDI: { region: "Scotland", lat: 55.95, lon: -3.373, name: "Edinburgh", full: "Edinburgh Airport", pax: 17.0,
+  EDI: { region: "Scotland", lat: 55.95, lon: -3.373, rail: true, name: "Edinburgh", full: "Edinburgh Airport", pax: 17.0,
     blurb: "Scotland's busiest, single terminal", terminals: "Single terminal",
     distance: "~13 km west of Edinburgh", fastTrack: true,
     peak: { start: "05:30", end: "08:30", adj: 10, note: "early departure bank" },
@@ -157,7 +158,7 @@ const RAW_AIRPORTS = {
     blurb: "quiet single terminal", terminals: "Single terminal",
     distance: "~13 km north-east of Inverness", fastTrack: false,
     routes: ["uk", "cta", "europe"] },
-  PIK: { region: "Scotland", lat: 55.509, lon: -4.587, name: "Prestwick", full: "Glasgow Prestwick", pax: 0.6,
+  PIK: { region: "Scotland", lat: 55.509, lon: -4.587, rail: true, name: "Prestwick", full: "Glasgow Prestwick", pax: 0.6,
     blurb: "low-cost holiday flights, own railway station", terminals: "Single terminal",
     distance: "~50 km south-west of Glasgow", fastTrack: false,
     routes: ["europe"] },
@@ -213,7 +214,7 @@ const RAW_AIRPORTS = {
     peak: { start: "05:00", end: "08:00", adj: 10, note: "early low-cost departure bank" },
     official: { shortHaul: 120, longHaul: 180, verified: true },
     routes: ["uk", "cta", "europe", "longHaul"] },
-  BHD: { region: "Northern Ireland", lat: 54.618, lon: -5.873, name: "Belfast City", full: "George Best Belfast City", pax: 2,
+  BHD: { region: "Northern Ireland", lat: 54.618, lon: -5.873, rail: true, name: "Belfast City", full: "George Best Belfast City", pax: 2,
     blurb: "compact and close in", terminals: "Single terminal",
     distance: "~4 km from Belfast city centre", fastTrack: true,
     peak: { start: "06:00", end: "08:00", adj: 5, note: "early business bank to London" },

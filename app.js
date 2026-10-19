@@ -4,6 +4,29 @@
 const BASELINE = 60;        // Silver's default: doors to departure
 const COMMUTE_FACTOR = 1.3; // Silver: "round up that commute time by 30 percent"
 
+/* How you get there. Silver's +30% applies to every mode; these add what
+   the door-to-door estimate tends to leave out. Our adaptation, not his. */
+const TRAVEL_MODES = {
+  lift:   { label: "Lift or taxi",      sub: "dropped at the door" },
+  park:   { label: "Driving & parking", sub: "car park, maybe a shuttle bus" },
+  public: { label: "Public transport",  sub: "train, bus, metro or tram" }
+};
+
+function travelExtra(i) {
+  const airport = AIRPORTS[i.airport];
+  if (i.travel === "park") {
+    const mins = airport.tiny ? 5 : airport.sizeAdj <= 0 ? 10 : 20;
+    return { label: airport.sizeAdj > 0 ? "Car park and shuttle bus" : "Parking and walking in", minutes: mins };
+  }
+  if (i.travel === "public") return { label: "One service earlier, in case of delays or a missed connection", minutes: 15 };
+  return null;
+}
+
+function travelMinutes(i) {
+  const extra = travelExtra(i);
+  return Math.round(i.commute * COMMUTE_FACTOR) + (extra ? extra.minutes : 0);
+}
+
 function toMinutes(hhmm) {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + m;
@@ -62,11 +85,11 @@ function computeBuffer(i) {
 
 function computePlan(i) {
   const buffer = computeBuffer(i);
-  const commute = Math.round(i.commute * COMMUTE_FACTOR);
+  const commute = travelMinutes(i);
   const depart = new Date(`${i.date}T${i.time}`);
   const atTerminal = new Date(depart.getTime() - buffer.total * 60000);
   const leaveHome = new Date(atTerminal.getTime() - commute * 60000);
-  return { buffer, commute, depart, atTerminal, leaveHome };
+  return { buffer, commute, travelExtra: travelExtra(i), depart, atTerminal, leaveHome };
 }
 
 /* ============================================================
@@ -108,7 +131,7 @@ function breakdownText(p) {
   return rows.concat([
     "",
     `Time at the airport: ${fmtDuration(p.buffer.total)}`,
-    `Travel there (+30%): ${fmtDuration(p.commute)}`,
+    `Travel there by ${TRAVEL_MODES[state.travel].label.toLowerCase()}: ${fmtDuration(p.commute)}`,
     `Total before departure: ${fmtDuration(p.buffer.total + p.commute)}`
   ]).join("\n");
 }
@@ -201,7 +224,7 @@ async function downloadICS() {
 /* ============================================================
    SECTION 4 — STATE, RENDER, EVENTS
    ============================================================ */
-const SAVED_KEYS = ["country", "airport", "route", "commute", "security", "bags", "feeling", "familiar"];
+const SAVED_KEYS = ["country", "airport", "route", "travel", "commute", "security", "bags", "feeling", "familiar"];
 const STORAGE_KEY = "airport-arrival-calculator:v1";
 
 const state = {
@@ -211,6 +234,7 @@ const state = {
   date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10),
   time: "07:00",
   flight: "",
+  travel: "lift",
   commute: 30,
   security: "standard",
   bags: "hand",
@@ -241,7 +265,11 @@ const $ = id => document.getElementById(id);
 
 // Minutes this choice would add or save compared with what's picked now.
 function optionDelta(field, value) {
-  return computeBuffer({ ...state, [field]: value }).total - computeBuffer(state).total;
+  const total = i => computeBuffer(i).total + travelMinutes(i);
+  const alt = { ...state, [field]: value };
+  // A location-based estimate changes with the mode, so compare like with like.
+  if (field === "travel" && locationEstimate()) alt.commute = locationEstimate(value);
+  return total(alt) - total(state);
 }
 
 function fmtDelta(d) {
@@ -283,7 +311,10 @@ function segment(el, field, options) {
     id: o.key, label: o.label, sub: o.sub,
     selected: o.key === state[field],
     delta: optionDelta(field, o.key),
-    pick: () => { state[field] = o.key; }
+    pick: () => {
+      state[field] = o.key;
+      if (field === "travel" && locationEstimate()) applyDriveEstimate();
+    }
   })), false);
 }
 
@@ -402,12 +433,24 @@ function estimateDriveMin(km, airport) {
   return Math.max(5, Math.round((10 + road / speed * 60) / 5) * 5);
 }
 
+// Public transport: slower than the car and with waits, faster where a
+// train or tram stops at the terminal.
+function estimateTravelMin(km, airport, mode) {
+  const car = estimateDriveMin(km, airport);
+  if (mode !== "public") return car;
+  return Math.round((car * (airport.rail ? 1.2 : 1.6) + 15) / 5) * 5;
+}
+
+function modeWord(mode) {
+  return mode === "public" ? "by public transport" : "drive";
+}
+
 function reachableAirports() {
   return Object.values(AIRPORTS)
     .filter(a => a.landmass === position.landmass)
     .map(a => {
       const km = distanceKm(position.lat, position.lon, a.lat, a.lon);
-      return { airport: a, km, minutes: estimateDriveMin(km, a) };
+      return { airport: a, km, minutes: estimateTravelMin(km, a, state.travel) };
     })
     .sort((x, y) => x.minutes - y.minutes || x.km - y.km);
 }
@@ -417,7 +460,16 @@ function setLocStatus(text, warn) {
   $("locStatus").classList.toggle("warn", !!warn);
 }
 
-// Use the drive estimate for the chosen airport, if it's reachable by road.
+// Estimated door-to-door minutes from the known position to the chosen
+// airport, or null when there's no position, no estimate in use, or no road.
+function locationEstimate(mode = state.travel) {
+  if (!position || !commuteFromLocation) return null;
+  const a = AIRPORTS[state.airport];
+  if (a.landmass !== position.landmass) return null;
+  return estimateTravelMin(distanceKm(position.lat, position.lon, a.lat, a.lon), a, mode);
+}
+
+// Use the travel estimate for the chosen airport, if it's reachable by road.
 function applyDriveEstimate() {
   const a = AIRPORTS[state.airport];
   if (a.landmass !== position.landmass) {
@@ -425,7 +477,7 @@ function applyDriveEstimate() {
     return;
   }
   const km = distanceKm(position.lat, position.lon, a.lat, a.lon);
-  state.commute = estimateDriveMin(km, a);
+  state.commute = estimateTravelMin(km, a, state.travel);
   $("commute").value = state.commute;
   commuteFromLocation = true;
   setLocStatus(`${a.name} is about ${Math.round(km)} km away.`);
@@ -440,7 +492,7 @@ function renderNearby() {
   tiles(el, near.map(r => ({
     id: r.airport.code,
     label: `${r.airport.name} (${r.airport.code})`,
-    sub: `${Math.round(r.km)} km · ~${r.minutes} min drive`,
+    sub: `${Math.round(r.km)} km · ~${r.minutes} min ${modeWord(state.travel)}`,
     selected: r.airport.code === state.airport,
     delta: 0,
     pick: () => chooseAirport(r.airport.code)
@@ -512,6 +564,8 @@ function render() {
     { key: "standard", label: "Standard" }
   ]);
 
+  segment($("travel"), "travel", Object.entries(TRAVEL_MODES).map(([key, m]) => ({ key, label: m.label, sub: m.sub })));
+
   segment($("bags"), "bags", [
     { key: "hand", label: "Hand luggage" },
     { key: "checked", label: "Checking a bag" }
@@ -549,7 +603,7 @@ function render() {
   $("barSub").textContent = `Inside by ${inside} · flight ${fmtTime(p.depart)}`;
   $("panelTotals").innerHTML = `
     <dt>Time at the airport</dt><dd>${fmtDuration(p.buffer.total)}</dd>
-    <dt>Travel there (${state.commute} + 30%)</dt><dd>${fmtDuration(p.commute)}</dd>
+    <dt>Travel there (${state.commute} + 30%${p.travelExtra ? ` + ${p.travelExtra.minutes}` : ""})</dt><dd>${fmtDuration(p.commute)}</dd>
     <dt>Total before departure</dt><dd>${fmtDuration(p.buffer.total + p.commute)}</dd>`;
 
   $("gcal").href = $("gcal2").href = googleCalendarUrl(state, p);
@@ -562,7 +616,7 @@ function render() {
 
   $("breakdown").innerHTML = rows + `
     <tr class="total"><td>Time at the airport</td><td class="n">${fmtDuration(p.buffer.total)}</td></tr>
-    <tr class="total"><td>Travel there (+30%)</td><td class="n">${fmtDuration(p.commute)}</td></tr>
+    <tr class="total"><td>Travel there — ${TRAVEL_MODES[state.travel].label.toLowerCase()} (+30%${p.travelExtra ? `, plus ${p.travelExtra.label.toLowerCase()}: ${p.travelExtra.minutes} min` : ""})</td><td class="n">${fmtDuration(p.commute)}</td></tr>
     <tr class="total"><td>Total before departure</td><td class="n">${fmtDuration(p.buffer.total + p.commute)}</td></tr>`;
 
   // official comparison

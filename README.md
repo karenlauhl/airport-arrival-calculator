@@ -8,6 +8,9 @@ calibrated for every UK airport with scheduled passenger flights, plus Dublin.
   GB are separated by sea, and which Scottish islands have their own airport), picks the quickest
   and fills in an estimated drive time. Your location stays on your phone: it isn't sent anywhere
   or saved. The drive time is a rough estimate from distance — edit it if you know better.
+- Lift/taxi, driving and parking, or public transport: parking adds 5–20 min depending on airport size,
+  public transport adds 15 min for a missed or late service, and the location estimate adjusts
+  (faster where a train, metro or tram stops at the terminal).
 - Exports a calendar entry: a `.ics` download (Apple Calendar, Outlook, etc.) or a Google Calendar link.
 
 No build step: plain HTML, CSS and JavaScript.
