@@ -4,6 +4,10 @@ Nate Silver's [arrival-time model](https://www.natesilver.net/p/how-soon-should-
 calibrated for every UK airport with scheduled passenger flights, plus Dublin.
 
 - Installs to your phone's home screen (PWA) and works offline after the first visit.
+- "Use my location" lists the airports you can actually drive to (it knows Northern Ireland and
+  GB are separated by sea, and which Scottish islands have their own airport), picks the quickest
+  and fills in an estimated drive time. Your location stays on your phone: it isn't sent anywhere
+  or saved. The drive time is a rough estimate from distance — edit it if you know better.
 - Exports a calendar entry: a `.ics` download (Apple Calendar, Outlook, etc.) or a Google Calendar link.
 
 No build step: plain HTML, CSS and JavaScript.
@@ -20,7 +24,8 @@ No build step: plain HTML, CSS and JavaScript.
 
 ## Adding an airport
 
-Add one entry to `RAW_AIRPORTS` in `airports.js`. Nothing else needs to change.
+Add one entry to `RAW_AIRPORTS` in `airports.js`, with its `lat`/`lon`. Island airports also need a
+`landmass` and a box in `ISLAND_BOXES`. Nothing else needs to change.
 The size adjustment comes from `pax` automatically. Then bump `CACHE_VERSION` in `sw.js`.
 
 ## Releasing a change

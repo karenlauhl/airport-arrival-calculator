@@ -201,10 +201,11 @@ async function downloadICS() {
 /* ============================================================
    SECTION 4 — STATE, RENDER, EVENTS
    ============================================================ */
-const SAVED_KEYS = ["airport", "route", "commute", "security", "bags", "feeling", "familiar"];
+const SAVED_KEYS = ["country", "airport", "route", "commute", "security", "bags", "feeling", "familiar"];
 const STORAGE_KEY = "airport-arrival-calculator:v1";
 
 const state = {
+  country: "GB",
   airport: "BFS",
   route: "uk",
   date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10),
@@ -227,6 +228,8 @@ try {
   if (!AIRPORTS[state.airport]) state.airport = "BFS";
   if (!AIRPORTS[state.airport].routes.includes(state.route)) state.route = AIRPORTS[state.airport].routes[0];
 } catch (e) { /* storage unavailable — defaults are fine */ }
+
+state.country = AIRPORTS[state.airport].country;
 
 function save() {
   try {
@@ -328,13 +331,35 @@ function fastTrackText(ft) {
   return "Not confirmed — check the airport's site";
 }
 
-// The picker is built once; render() only keeps its value in sync.
+/* Country picker is built once; the airport list is rebuilt when the
+   country changes, grouped by region. */
+function buildCountryPicker() {
+  const sel = $("country");
+  Object.entries(COUNTRIES).forEach(([code, c]) => {
+    const o = document.createElement("option");
+    o.value = code;
+    o.textContent = c.name;
+    sel.appendChild(o);
+  });
+  sel.onchange = e => {
+    const first = Object.values(AIRPORTS).find(a => a.country === e.target.value);
+    chooseAirport(first.code);
+  };
+  $("apt").onchange = e => chooseAirport(e.target.value);
+}
+
+let builtFor = null;
 function buildAirportPicker() {
+  if (builtFor === state.country) return;
+  builtFor = state.country;
   const sel = $("apt");
-  REGIONS.forEach(region => {
+  sel.innerHTML = "";
+  COUNTRIES[state.country].regions.forEach(region => {
+    const list = Object.values(AIRPORTS).filter(a => a.region === region);
+    if (!list.length) return;
     const group = document.createElement("optgroup");
     group.label = region;
-    Object.values(AIRPORTS).filter(a => a.region === region).forEach(a => {
+    list.forEach(a => {
       const o = document.createElement("option");
       o.value = a.code;
       o.textContent = `${a.name} (${a.code})`;
@@ -342,18 +367,125 @@ function buildAirportPicker() {
     });
     sel.appendChild(group);
   });
-  sel.onchange = e => {
-    state.airport = e.target.value;
-    if (!AIRPORTS[state.airport].routes.includes(state.route)) state.route = AIRPORTS[state.airport].routes[0];
+}
+
+function chooseAirport(code) {
+  state.airport = code;
+  state.country = AIRPORTS[code].country;
+  if (!AIRPORTS[code].routes.includes(state.route)) state.route = AIRPORTS[code].routes[0];
+  if (position) applyDriveEstimate();
+  render();
+}
+
+/* ============================================================
+   LOCATION — "airports you can drive to"
+   The position stays in memory on this device; it is never sent
+   anywhere or saved.
+   ============================================================ */
+const MAX_REACH_KM = 250;
+let position = null;   // { lat, lon, landmass }
+let commuteFromLocation = false;
+
+function distanceKm(lat1, lon1, lat2, lon2) {
+  const rad = d => d * Math.PI / 180;
+  const a = Math.sin(rad(lat2 - lat1) / 2) ** 2 +
+            Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lon2 - lon1) / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(a));
+}
+
+// Free-flowing estimate from straight-line distance; the model adds its
+// 30% for traffic on top, so this deliberately doesn't.
+function estimateDriveMin(km, airport) {
+  const long = km >= 80;               // mostly motorway / dual carriageway
+  const road = km * (airport && airport.roadFactor || (long ? 1.25 : 1.35));
+  const speed = km < 10 ? 30 : km < 40 ? 50 : long ? 90 : 70;
+  return Math.max(5, Math.round((10 + road / speed * 60) / 5) * 5);
+}
+
+function reachableAirports() {
+  return Object.values(AIRPORTS)
+    .filter(a => a.landmass === position.landmass)
+    .map(a => {
+      const km = distanceKm(position.lat, position.lon, a.lat, a.lon);
+      return { airport: a, km, minutes: estimateDriveMin(km, a) };
+    })
+    .sort((x, y) => x.minutes - y.minutes || x.km - y.km);
+}
+
+function setLocStatus(text, warn) {
+  $("locStatus").textContent = text;
+  $("locStatus").classList.toggle("warn", !!warn);
+}
+
+// Use the drive estimate for the chosen airport, if it's reachable by road.
+function applyDriveEstimate() {
+  const a = AIRPORTS[state.airport];
+  if (a.landmass !== position.landmass) {
+    setLocStatus(`${a.name} isn't reachable by road from where you are.`, true);
+    return;
+  }
+  const km = distanceKm(position.lat, position.lon, a.lat, a.lon);
+  state.commute = estimateDriveMin(km, a);
+  $("commute").value = state.commute;
+  commuteFromLocation = true;
+  setLocStatus(`${a.name} is about ${Math.round(km)} km away.`);
+}
+
+function renderNearby() {
+  const el = $("nearby");
+  if (!position) { el.hidden = true; return; }
+  const near = reachableAirports().filter(r => r.km <= MAX_REACH_KM).slice(0, 4);
+  el.hidden = !near.length;
+  if (!near.length) return;
+  tiles(el, near.map(r => ({
+    id: r.airport.code,
+    label: `${r.airport.name} (${r.airport.code})`,
+    sub: `${Math.round(r.km)} km · ~${r.minutes} min drive`,
+    selected: r.airport.code === state.airport,
+    delta: 0,
+    pick: () => chooseAirport(r.airport.code)
+  })), false);
+}
+
+function locate() {
+  if (!("geolocation" in navigator)) { setLocStatus("This device can't share its location.", true); return; }
+  setLocStatus("Finding you…");
+  $("locate").disabled = true;
+  navigator.geolocation.getCurrentPosition(pos => {
+    $("locate").disabled = false;
+    const { latitude: lat, longitude: lon } = pos.coords;
+    position = { lat, lon, landmass: landmassAt(lat, lon) };
+    const near = reachableAirports();
+    if (!near.length) {
+      setLocStatus("There's no airport in this app on your island.", true);
+    } else if (near[0].km > MAX_REACH_KM) {
+      position = null;
+      setLocStatus("You're outside the area this app covers (UK and Ireland).", true);
+    } else {
+      chooseAirport(near[0].airport.code);
+      setLocStatus(`Quickest to reach by road: ${near[0].airport.name}, about ${Math.round(near[0].km)} km away.`);
+      return;
+    }
     render();
-  };
+  }, err => {
+    $("locate").disabled = false;
+    setLocStatus(err.code === err.PERMISSION_DENIED
+      ? "Location is turned off for this site — pick your airport below."
+      : "Couldn't get your location — pick your airport below.", true);
+  }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
 }
 
 let shownAirport = null;
 
 function render() {
   const airport = AIRPORTS[state.airport];
+  buildAirportPicker();
+  $("country").value = state.country;
   $("apt").value = state.airport;
+  renderNearby();
+  $("commuteHelp").textContent = commuteFromLocation
+    ? "Estimated from your location — change it if you know better. The model adds 30% for traffic."
+    : "Your honest estimate — the model adds 30% for traffic, as Silver recommends.";
 
   // airport info, faded in when the airport changes
   if (shownAirport !== state.airport) {
@@ -455,11 +587,12 @@ $("date").oninput = e => { state.date = e.target.value; render(); };
 $("time").oninput = e => { state.time = e.target.value; render(); };
 $("flight").oninput = e => { state.flight = e.target.value; render(); };
 $("commute").value = state.commute;
-$("commute").oninput = e => { state.commute = Math.max(0, Number(e.target.value) || 0); render(); };
+$("commute").oninput = e => { state.commute = Math.max(0, Number(e.target.value) || 0); commuteFromLocation = false; render(); };
+$("locate").onclick = locate;
 $("addCal").onclick = $("addCal2").onclick = downloadICS;
 $("bar").onclick = () => $("plan").scrollIntoView({ behavior: "smooth", block: "start" });
 
-buildAirportPicker();
+buildCountryPicker();
 render();
 
 // Sections rise into view as you scroll. Skipped when motion is reduced.

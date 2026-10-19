@@ -140,6 +140,15 @@ select {
 .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
 .row input { min-width: 0; }
 
+/* location */
+.locate { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .9rem; margin-bottom: 1rem; }
+.locate .btn { flex: 0 0 auto; min-height: 44px; }
+.loc-status { color: var(--ink-dim); font-size: .9rem; flex: 1 1 12rem; }
+.loc-status.warn { color: var(--pos); }
+#nearby { margin-bottom: 1rem; }
+#nearby[hidden] { display: none; }
+.pick { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+
 /* airport info */
 .info { margin-top: .75rem; font-size: .92rem; color: var(--ink-dim); }
 .info .size { color: var(--ink); font-weight: 600; margin-bottom: .35rem; }
@@ -275,7 +284,15 @@ footer p { margin: 0 0 .7rem; }
 
     <section class="step">
       <h2>Airport. <span>Where are you flying from?</span></h2>
-      <select id="apt" aria-label="Departing from"></select>
+      <div class="locate">
+        <button type="button" class="btn secondary" id="locate">Use my location</button>
+        <span class="loc-status" id="locStatus" role="status" aria-live="polite"></span>
+      </div>
+      <div class="tiles" id="nearby" hidden></div>
+      <div class="row pick">
+        <div><label class="field-label" for="country">Country</label><select id="country"></select></div>
+        <div><label class="field-label" for="apt">Airport</label><select id="apt"></select></div>
+      </div>
       <div class="info" id="aptInfo"></div>
     </section>
 
@@ -298,7 +315,7 @@ footer p { margin: 0 0 .7rem; }
 
     <section class="step">
       <h2>Getting there. <span>Door to airport, in minutes.</span></h2>
-      <p class="help">Your honest estimate — the model adds 30% for traffic, as Silver recommends.</p>
+      <p class="help" id="commuteHelp">Your honest estimate — the model adds 30% for traffic, as Silver recommends.</p>
       <input type="number" id="commute" min="0" max="600" step="5" value="30" inputmode="numeric" aria-label="Door-to-airport travel time in minutes">
     </section>
 
