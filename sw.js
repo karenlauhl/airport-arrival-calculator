@@ -1,7 +1,7 @@
 /* Offline cache for the app shell.
    Bump CACHE_VERSION whenever any file below changes, or installed
    copies will keep serving the old version until it's bumped. */
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v5";
 const CACHE = `airport-time-${CACHE_VERSION}`;
 const SHELL = [
   "./",

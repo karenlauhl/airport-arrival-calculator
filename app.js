@@ -4,8 +4,10 @@
 const BASELINE = 60;        // Silver's default: doors to departure
 const COMMUTE_FACTOR = 1.3; // Silver: "round up that commute time by 30 percent"
 
-/* How you get there. Silver's +30% applies to every mode; these add what
-   the door-to-door estimate tends to leave out. Our adaptation, not his. */
+/* How you get there. Silver's +30% is for road traffic, so it applies to
+   the car modes. Public transport runs to a timetable: its risk is a late
+   or missed service, so it gets one-service-earlier padding instead.
+   Our adaptation, not his. */
 const TRAVEL_MODES = {
   lift:   { label: "Lift or taxi",      sub: "dropped at the door" },
   park:   { label: "Driving & parking", sub: "car park, maybe a shuttle bus" },
@@ -18,13 +20,14 @@ function travelExtra(i) {
     const mins = airport.tiny ? 5 : airport.sizeAdj <= 0 ? 10 : 20;
     return { label: airport.sizeAdj > 0 ? "Car park and shuttle bus" : "Parking and walking in", minutes: mins };
   }
-  if (i.travel === "public") return { label: "One service earlier, in case of delays or a missed connection", minutes: 15 };
+  if (i.travel === "public") return { label: "One service earlier, in case of delays", minutes: 15 };
   return null;
 }
 
 function travelMinutes(i) {
   const extra = travelExtra(i);
-  return Math.round(i.commute * COMMUTE_FACTOR) + (extra ? extra.minutes : 0);
+  const base = i.travel === "public" ? i.commute : Math.round(i.commute * COMMUTE_FACTOR);
+  return base + (extra ? extra.minutes : 0);
 }
 
 function toMinutes(hhmm) {
@@ -133,7 +136,8 @@ function breakdownText(p) {
     `Time at the airport: ${fmtDuration(p.buffer.total)}`,
     `Travel there by ${TRAVEL_MODES[state.travel].label.toLowerCase()}: ${fmtDuration(p.commute)}`,
     `Total before departure: ${fmtDuration(p.buffer.total + p.commute)}`
-  ]).join("\n");
+  ]).concat(state.travel === "public"
+    ? ["", `Public transport directions: ${transitUrl(AIRPORTS[state.airport])}`] : []).join("\n");
 }
 
 function flightLabel(i) {
@@ -438,7 +442,34 @@ function estimateDriveMin(km, airport) {
 function estimateTravelMin(km, airport, mode) {
   const car = estimateDriveMin(km, airport);
   if (mode !== "public") return car;
-  return Math.round((car * (airport.rail ? 1.2 : 1.6) + 15) / 5) * 5;
+  // Long trips are mostly an express coach or train at road speed; short
+  // ones are slower local services. Plus getting to the stop and waiting.
+  const mins = km >= 80 ? car * 1.1 + 20 : car * (airport.rail ? 1.1 : 1.4) + 10;
+  return Math.round(mins / 5) * 5;
+}
+
+function transitUrl(airport) {
+  const q = new URLSearchParams({ api: "1", destination: airport.full, travelmode: "transit" });
+  if (position) q.set("origin", `${position.lat.toFixed(4)},${position.lon.toFixed(4)}`);
+  return `https://www.google.com/maps/dir/?${q}`;
+}
+
+function renderJourneyLinks() {
+  const card = $("journey");
+  card.hidden = state.travel !== "public";
+  if (card.hidden) return;
+  const a = AIRPORTS[state.airport];
+  const links = [{ name: "Google Maps — public transport directions", url: transitUrl(a) }];
+  links.push(PLANNERS[REGION_PLANNER[a.region]]);
+  // Cross-border trips on the island of Ireland use both networks.
+  if (a.landmass === "ireland") links.push(PLANNERS[a.country === "IE" ? "translink" : "tfi"]);
+  if (a.rail && a.country === "GB") links.push(PLANNERS.rail);
+  (a.transit || []).forEach(t => links.push(t));
+  $("journeyLinks").innerHTML = links.map(l =>
+    `<li><a href="${l.url}" target="_blank" rel="noopener">${l.name}</a></li>`).join("");
+  $("journeyNote").textContent = position
+    ? "The Google Maps link starts from your location, so opening it shares that with Google."
+    : "";
 }
 
 function modeWord(mode) {
@@ -535,9 +566,13 @@ function render() {
   $("country").value = state.country;
   $("apt").value = state.airport;
   renderNearby();
-  $("commuteHelp").textContent = commuteFromLocation
-    ? "Estimated from your location — change it if you know better. The model adds 30% for traffic."
-    : "Your honest estimate — the model adds 30% for traffic, as Silver recommends.";
+  $("commuteHelp").textContent = state.travel === "public"
+    ? (commuteFromLocation ? "Estimated from your location. " : "") +
+      "Look up the journey below and enter the door-to-door time. No traffic padding is added — just 15 min for one service earlier."
+    : commuteFromLocation
+      ? "Estimated from your location — change it if you know better. The model adds 30% for traffic."
+      : "Your honest estimate — the model adds 30% for traffic, as Silver recommends.";
+  renderJourneyLinks();
 
   // airport info, faded in when the airport changes
   if (shownAirport !== state.airport) {
@@ -603,7 +638,7 @@ function render() {
   $("barSub").textContent = `Inside by ${inside} · flight ${fmtTime(p.depart)}`;
   $("panelTotals").innerHTML = `
     <dt>Time at the airport</dt><dd>${fmtDuration(p.buffer.total)}</dd>
-    <dt>Travel there (${state.commute} + 30%${p.travelExtra ? ` + ${p.travelExtra.minutes}` : ""})</dt><dd>${fmtDuration(p.commute)}</dd>
+    <dt>Travel there (${state.commute}${state.travel === "public" ? "" : " + 30%"}${p.travelExtra ? ` + ${p.travelExtra.minutes}` : ""})</dt><dd>${fmtDuration(p.commute)}</dd>
     <dt>Total before departure</dt><dd>${fmtDuration(p.buffer.total + p.commute)}</dd>`;
 
   $("gcal").href = $("gcal2").href = googleCalendarUrl(state, p);
@@ -616,7 +651,10 @@ function render() {
 
   $("breakdown").innerHTML = rows + `
     <tr class="total"><td>Time at the airport</td><td class="n">${fmtDuration(p.buffer.total)}</td></tr>
-    <tr class="total"><td>Travel there — ${TRAVEL_MODES[state.travel].label.toLowerCase()} (+30%${p.travelExtra ? `, plus ${p.travelExtra.label.toLowerCase()}: ${p.travelExtra.minutes} min` : ""})</td><td class="n">${fmtDuration(p.commute)}</td></tr>
+    <tr class="total"><td>Travel there — ${TRAVEL_MODES[state.travel].label.toLowerCase()} (${[
+      state.travel === "public" ? `${state.commute} min` : `${state.commute} min + 30%`,
+      p.travelExtra ? `${p.travelExtra.label.toLowerCase()}: ${p.travelExtra.minutes} min` : ""
+    ].filter(Boolean).join(", plus ")})</td><td class="n">${fmtDuration(p.commute)}</td></tr>
     <tr class="total"><td>Total before departure</td><td class="n">${fmtDuration(p.buffer.total + p.commute)}</td></tr>`;
 
   // official comparison

@@ -8,9 +8,12 @@ calibrated for every UK airport with scheduled passenger flights, plus Dublin.
   GB are separated by sea, and which Scottish islands have their own airport), picks the quickest
   and fills in an estimated drive time. Your location stays on your phone: it isn't sent anywhere
   or saved. The drive time is a rough estimate from distance — edit it if you know better.
-- Lift/taxi, driving and parking, or public transport: parking adds 5–20 min depending on airport size,
-  public transport adds 15 min for a missed or late service, and the location estimate adjusts
-  (faster where a train, metro or tram stops at the terminal).
+- Lift/taxi, driving and parking, or public transport. The car modes get Silver's +30% for traffic
+  (parking adds 5–20 min by airport size). Public transport runs to a timetable, so instead of +30%
+  it gets 15 min for one service earlier, plus a "Plan the journey" card: Google Maps public transport
+  directions, the official planner for the region (TfL, Traveline, Traveline Scotland/Cymru,
+  Translink, Transport for Ireland, National Rail) and the airport's own transport links where known.
+  Airport links live in each airport's `transit` list in `airports.js`; add only checked URLs.
 - Exports a calendar entry: a `.ics` download (Apple Calendar, Outlook, etc.) or a Google Calendar link.
 
 No build step: plain HTML, CSS and JavaScript.

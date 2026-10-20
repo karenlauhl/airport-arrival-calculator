@@ -8,6 +8,9 @@
      region     picker group within the country
      lat, lon   airport position, for "Use my location"
      rail       true where a train, metro or tram stops at the terminal
+     transit    optional [{ name, url }]: the airport's own public-transport
+                page and main airport services. Only links checked against
+                a published source — leave it out rather than guess.
      roadFactor optional: road distance ÷ straight line, where roads go
                 the long way round (default 1.25–1.35)
      landmass   only for island airports — see LANDMASSES; otherwise
@@ -47,22 +50,26 @@ const RAW_AIRPORTS = {
     blurb: "the UK's busiest, four terminals", terminals: "T2, T3, T4, T5 — check which; they're far apart",
     distance: "~24 km west of central London", fastTrack: "premium",
     peak: { start: "06:00", end: "09:00", adj: 10, note: "morning long-haul arrivals and short-haul departure bank" },
-    routes: ["uk", "cta", "europe", "longHaul"] },
+    routes: ["uk", "cta", "europe", "longHaul"],
+    transit: [{ name: "Heathrow Express", url: "https://www.heathrowexpress.com/" }, { name: "Heathrow: transport and directions", url: "https://www.heathrow.com/transport-and-directions" }] },
   LGW: { region: "London", lat: 51.153, lon: -0.182, rail: true, name: "Gatwick", full: "London Gatwick", pax: 42.8,
     blurb: "two terminals, heavy holiday traffic", terminals: "North and South — check which",
     distance: "~45 km south of central London", fastTrack: true,
     peak: { start: "05:00", end: "08:30", adj: 10, note: "early holiday departure bank" },
-    routes: ["uk", "cta", "europe", "longHaul"] },
+    routes: ["uk", "cta", "europe", "longHaul"],
+    transit: [{ name: "Gatwick Express", url: "https://www.gatwickexpress.com/" }, { name: "Gatwick: to and from London", url: "https://gatwickairport.com/transport-options/to-from-london.html" }] },
   STN: { region: "London", lat: 51.885, lon: 0.235, rail: true, name: "Stansted", full: "London Stansted", pax: 29.8,
     blurb: "low-cost hub, long early queues", terminals: "Single terminal, satellite gates by shuttle",
     distance: "~55 km north-east of central London", fastTrack: true,
     peak: { start: "05:00", end: "08:00", adj: 10, note: "early low-cost departure bank" },
-    routes: ["uk", "cta", "europe", "longHaul"] },
+    routes: ["uk", "cta", "europe", "longHaul"],
+    transit: [{ name: "Stansted Express", url: "https://www.stanstedexpress.com/" }] },
   LTN: { region: "London", lat: 51.875, lon: -0.368, rail: true, name: "Luton", full: "London Luton", pax: 17.8,
     blurb: "low-cost, single terminal", terminals: "Single terminal",
     distance: "~55 km north of central London", fastTrack: true,
     peak: { start: "05:00", end: "08:00", adj: 10, note: "early low-cost departure bank" },
-    routes: ["uk", "cta", "europe"] },
+    routes: ["uk", "cta", "europe"],
+    transit: [{ name: "Luton: getting to the airport", url: "https://www.london-luton.co.uk/to-and-from-lla" }] },
   LCY: { region: "London", lat: 51.505, lon: 0.055, rail: true, name: "London City", full: "London City", pax: 3.6,
     blurb: "business-focused, very quick to get through", terminals: "Single terminal",
     distance: "~11 km east of central London", fastTrack: false,
@@ -82,7 +89,8 @@ const RAW_AIRPORTS = {
   BHX: { region: "England", lat: 52.454, lon: -1.748, rail: true, name: "Birmingham", full: "Birmingham Airport", pax: 13.5,
     blurb: "single terminal, busy mornings", terminals: "Single terminal",
     distance: "~10 km east of Birmingham", fastTrack: true,
-    routes: ["uk", "cta", "europe", "longHaul"] },
+    routes: ["uk", "cta", "europe", "longHaul"],
+    transit: [{ name: "Birmingham Airport: by train", url: "https://www.birminghamairport.co.uk/transport-links/by-train/" }] },
   BRS: { region: "England", lat: 51.383, lon: -2.719, name: "Bristol", full: "Bristol Airport", pax: 10.6,
     blurb: "single terminal, rural approach roads", terminals: "Single terminal",
     distance: "~13 km south-west of Bristol", fastTrack: true,
@@ -145,11 +153,13 @@ const RAW_AIRPORTS = {
     blurb: "Scotland's busiest, single terminal", terminals: "Single terminal",
     distance: "~13 km west of Edinburgh", fastTrack: true,
     peak: { start: "05:30", end: "08:30", adj: 10, note: "early departure bank" },
-    routes: ["uk", "cta", "europe", "longHaul"] },
+    routes: ["uk", "cta", "europe", "longHaul"],
+    transit: [{ name: "Edinburgh Airport: city bus links", url: "https://www.edinburghairport.com/transport-links/buses-and-coaches/edinburgh-city-bus-links" }, { name: "Lothian Buses (Airlink 100)", url: "https://www.lothianbuses.com/" }] },
   GLA: { region: "Scotland", lat: 55.872, lon: -4.433, name: "Glasgow", full: "Glasgow Airport", pax: 7.5,
     blurb: "single terminal", terminals: "Single terminal",
     distance: "~13 km west of Glasgow", fastTrack: true,
-    routes: ["uk", "cta", "europe", "longHaul"] },
+    routes: ["uk", "cta", "europe", "longHaul"],
+    transit: [{ name: "Glasgow Airport Express 500", url: "https://www.firstbus.co.uk/greater-glasgow/glasgow-airport-express" }, { name: "Glasgow Airport: Express 500", url: "https://www.glasgowairport.com/to-and-from/glasgow-airport-express-service-500/" }] },
   ABZ: { region: "Scotland", lat: 57.202, lon: -2.198, name: "Aberdeen", full: "Aberdeen International", pax: 2.4,
     blurb: "single terminal, oil-industry traffic", terminals: "Single terminal",
     distance: "~11 km north-west of Aberdeen", fastTrack: true,
@@ -213,13 +223,15 @@ const RAW_AIRPORTS = {
     distance: "~20 km from Belfast city centre", fastTrack: true,
     peak: { start: "05:00", end: "08:00", adj: 10, note: "early low-cost departure bank" },
     official: { shortHaul: 120, longHaul: 180, verified: true },
-    routes: ["uk", "cta", "europe", "longHaul"] },
+    routes: ["uk", "cta", "europe", "longHaul"],
+    transit: [{ name: "Belfast Intl: bus and coach", url: "https://www.belfastairport.com/to-from/by-buscoach" }] },
   BHD: { region: "Northern Ireland", lat: 54.618, lon: -5.873, rail: true, name: "Belfast City", full: "George Best Belfast City", pax: 2,
     blurb: "compact and close in", terminals: "Single terminal",
     distance: "~4 km from Belfast city centre", fastTrack: true,
     peak: { start: "06:00", end: "08:00", adj: 5, note: "early business bank to London" },
     official: { shortHaul: 120, longHaul: null, verified: false },
-    routes: ["uk", "cta", "europe"] },
+    routes: ["uk", "cta", "europe"],
+    transit: [{ name: "Belfast City: getting to the airport", url: "https://www.belfastcityairport.com/Getting-to-the-airport" }] },
   LDY: { region: "Northern Ireland", lat: 55.043, lon: -7.161, name: "City of Derry", full: "City of Derry Airport", pax: 0.2,
     blurb: "quiet single terminal", terminals: "Single terminal",
     distance: "~11 km north-east of Derry", fastTrack: false,
@@ -231,7 +243,23 @@ const RAW_AIRPORTS = {
     distance: "~10 km from Dublin city centre", fastTrack: true,
     peak: { start: "05:00", end: "12:00", adj: 10, note: "T2 morning transatlantic bank" },
     official: { shortHaul: 120, longHaul: 180, verified: true },
-    routes: ["cta", "europe", "usPreclear", "longHaul"] }
+    routes: ["cta", "europe", "usPreclear", "longHaul"],
+    transit: [{ name: "Dublin Airport: buses", url: "https://www.dublinairport.com/to-from-the-airport/by-bus/dublin-buses" }, { name: "Dublin Express", url: "https://www.dublinexpress.ie/" }, { name: "Aircoach", url: "https://www.aircoach.ie/" }] }
+};
+
+/* Official journey planners, by airport region. */
+const PLANNERS = {
+  tfl:      { name: "TfL Journey Planner", url: "https://tfl.gov.uk/plan-a-journey" },
+  traveline:{ name: "Traveline", url: "https://www.traveline.info/" },
+  scotland: { name: "Traveline Scotland", url: "https://www.travelinescotland.com/" },
+  cymru:    { name: "Traveline Cymru", url: "https://www.traveline.cymru/" },
+  translink:{ name: "Translink", url: "https://www.translink.co.uk/" },
+  tfi:      { name: "Transport for Ireland", url: "https://www.transportforireland.ie/" },
+  rail:     { name: "National Rail", url: "https://www.nationalrail.co.uk/" }
+};
+const REGION_PLANNER = {
+  "London": "tfl", "England": "traveline", "Scotland": "scotland", "Scottish islands": "scotland",
+  "Wales": "cymru", "Northern Ireland": "translink", "Ireland": "tfi"
 };
 
 /* Countries for the first picker, each with its regions in display order. */

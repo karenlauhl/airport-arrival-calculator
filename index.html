@@ -149,6 +149,17 @@ select {
 #nearby[hidden] { display: none; }
 .pick { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
 
+/* public transport links */
+.journey { background: var(--card); border-radius: var(--radius); padding: 1.1rem 1.25rem; margin-top: 1rem; }
+.journey[hidden] { display: none; }
+.journey h3 { font-size: 1.05rem; margin: 0 0 .5rem; letter-spacing: -0.02em; }
+.links { list-style: none; margin: 0; padding: 0; }
+.links li { border-top: 1px solid var(--line); }
+.links li:first-child { border-top: 0; }
+.links a { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .7rem 0; color: var(--accent); text-decoration: none; font-size: .95rem; }
+.links a::after { content: "↗"; color: var(--ink-dim); font-size: .85rem; }
+.journey .small:empty { display: none; }
+
 /* airport info */
 .info { margin-top: .75rem; font-size: .92rem; color: var(--ink-dim); }
 .info .size { color: var(--ink); font-weight: 600; margin-bottom: .35rem; }
@@ -318,6 +329,12 @@ footer p { margin: 0 0 .7rem; }
       <div class="tiles" id="travel" style="margin-bottom:1.25rem"></div>
       <p class="help" id="commuteHelp">Your honest estimate — the model adds 30% for traffic, as Silver recommends.</p>
       <input type="number" id="commute" min="0" max="600" step="5" value="30" inputmode="numeric" aria-label="Door-to-airport travel time in minutes">
+      <div class="journey" id="journey" hidden>
+        <h3>Plan the journey</h3>
+        <ul class="links" id="journeyLinks"></ul>
+        <p class="small">Early flight? Check the first service of the day — the estimate can't see timetables.</p>
+        <p class="small" id="journeyNote"></p>
+      </div>
     </section>
 
     <section class="step" id="securityField">
