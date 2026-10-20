@@ -14,6 +14,10 @@ calibrated for every UK airport with scheduled passenger flights, plus Dublin.
   directions, the official planner for the region (TfL, Traveline, Traveline Scotland/Cymru,
   Translink, Transport for Ireland, National Rail) and the airport's own transport links where known.
   Airport links live in each airport's `transit` list in `airports.js`; add only checked URLs.
+- Strategy: "Recommended" (Silver's model) or "Least time at the airport", which works back from
+  the gate closing (30 min short-haul, 45 long-haul, 90 for Dublin's US preclearance by default —
+  enter your airline's real times) plus security and the walk to the gate, and with a checked bag,
+  the bag-drop queue and cut-off. No comfort margin: a slow queue means a missed flight.
 - Exports a calendar entry: a `.ics` download (Apple Calendar, Outlook, etc.) or a Google Calendar link.
 
 No build step: plain HTML, CSS and JavaScript.

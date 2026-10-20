@@ -147,6 +147,7 @@ select {
 .loc-status.warn { color: var(--pos); }
 #nearby { margin-bottom: 1rem; }
 #nearby[hidden] { display: none; }
+#tightFields[hidden], #bagCloseField[hidden] { display: none; }
 .pick { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
 
 /* public transport links */
@@ -360,6 +361,15 @@ footer p { margin: 0 0 .7rem; }
     <section class="step">
       <h2>Anything else. <span>Tick all that apply.</span></h2>
       <div class="tiles" id="flags"></div>
+    </section>
+
+    <section class="step">
+      <h2>Strategy. <span>Comfortable, or as little airport as possible?</span></h2>
+      <div class="tiles" id="strategy"></div>
+      <div class="row" id="tightFields" hidden style="margin-top:1rem">
+        <div><label class="field-label" for="gateClose">Gate closes (min before)</label><input type="number" id="gateClose" min="5" max="240" step="5" inputmode="numeric"></div>
+        <div id="bagCloseField"><label class="field-label" for="bagClose">Bag drop closes (min before)</label><input type="number" id="bagClose" min="5" max="240" step="5" inputmode="numeric"></div>
+      </div>
     </section>
 
     <section class="step" id="plan">

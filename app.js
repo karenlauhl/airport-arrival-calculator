@@ -46,11 +46,65 @@ function hasFastTrackChoice(airport) {
   return !airport.tiny && airport.fastTrack !== false;
 }
 
+/* "Least time at the airport": work back from the hard cut-offs instead
+   of Silver's comfort margin. Typical airline times — people can override
+   them with their own airline's. Security-and-walk minutes by size tier. */
+const TIGHT = {
+  gate: { short: 30, long: 45, usPreclear: 90 },
+  bag: { short: 40, long: 60 },
+  bagQueue: 10,
+  securityWalk: { Tiny: 5, Small: 15, Medium: 20, Large: 30, "Very large": 35 }
+};
+
+function tightDefaults(i) {
+  const route = ROUTES[i.route];
+  return {
+    gate: i.route === "usPreclear" ? TIGHT.gate.usPreclear : route.long ? TIGHT.gate.long : TIGHT.gate.short,
+    bag: route.long ? TIGHT.bag.long : TIGHT.bag.short
+  };
+}
+
+function computeTight(i) {
+  const airport = AIRPORTS[i.airport];
+  const security = hasFastTrackChoice(airport) ? i.security : "standard";
+  const d = tightDefaults(i);
+  const gate = i.gateClose || d.gate;
+  const lines = [];
+  const add = (label, minutes) => { if (minutes) lines.push({ label, minutes }); };
+  const size = airport.sizeLabel.split(" — ")[0];
+
+  lines.push({ label: i.route === "usPreclear"
+      ? `US preclearance and gate close ${gate} min before departure`
+      : `Gate closes ${gate} min before departure${i.gateClose ? "" : " (typical — check your airline)"}`,
+    minutes: gate, base: true });
+  add(`Security and walk to the gate — ${size.toLowerCase()} airport`, TIGHT.securityWalk[size]);
+  if (security === "fast" && !airport.tiny) add("Fast Track security", -10);
+  if (i.familiar) add("You know the shortcuts", -5);
+  if (inPeak(airport.peak, i.time) && security !== "fast") add(`Longer queues: ${airport.peak.note}`, 10);
+  if (i.conditions === "holiday") add("Holiday peak queues", security === "fast" ? 5 : 15);
+  if (i.conditions === "storm") add("Severe weather", 10);
+
+  // Bag drop comes before security, so its queue adds to the walk; and
+  // you must reach the desk before it closes.
+  if (i.bags === "checked") add("Bag drop queue", TIGHT.bagQueue);
+  let total = lines.reduce((s, l) => s + l.minutes, 0);
+  if (i.bags === "checked") {
+    const bagClose = i.bagClose || d.bag;
+    const need = bagClose + TIGHT.bagQueue;
+    if (need > total) {
+      add(`Bag drop closes ${bagClose} min before${i.bagClose ? "" : " (typical)"} — reach it with time to queue`, need - total);
+      total = need;
+    }
+  }
+  return { total, lines, tight: true };
+}
+
 /**
  * Returns { total, lines: [{label, minutes}] }.
  * `total` is minutes from walking through the terminal doors to departure.
  */
 function computeBuffer(i) {
+  if (i.strategy === "tight") return computeTight(i);
   const airport = AIRPORTS[i.airport];
   const route = ROUTES[i.route];
   const security = hasFastTrackChoice(airport) ? i.security : "standard";
@@ -228,7 +282,7 @@ async function downloadICS() {
 /* ============================================================
    SECTION 4 — STATE, RENDER, EVENTS
    ============================================================ */
-const SAVED_KEYS = ["country", "airport", "route", "travel", "commute", "security", "bags", "feeling", "familiar"];
+const SAVED_KEYS = ["strategy", "country", "airport", "route", "travel", "commute", "security", "bags", "feeling", "familiar"];
 const STORAGE_KEY = "airport-arrival-calculator:v1";
 
 const state = {
@@ -238,6 +292,9 @@ const state = {
   date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10),
   time: "07:00",
   flight: "",
+  strategy: "silver",
+  gateClose: null,
+  bagClose: null,
   travel: "lift",
   commute: 30,
   security: "standard",
@@ -599,6 +656,16 @@ function render() {
     { key: "standard", label: "Standard" }
   ]);
 
+  segment($("strategy"), "strategy", [
+    { key: "silver", label: "Recommended", sub: "Silver's model — a comfortable margin" },
+    { key: "tight", label: "Least time at the airport", sub: "work back from the gate and bag-drop cut-offs" }
+  ]);
+  $("tightFields").hidden = state.strategy !== "tight";
+  const td = tightDefaults(state);
+  $("gateClose").placeholder = td.gate;
+  $("bagClose").placeholder = td.bag;
+  $("bagCloseField").hidden = state.bags !== "checked";
+
   segment($("travel"), "travel", Object.entries(TRAVEL_MODES).map(([key, m]) => ({ key, label: m.label, sub: m.sub })));
 
   segment($("bags"), "bags", [
@@ -634,8 +701,9 @@ function render() {
   const inside = `${fmtTime(p.atTerminal)}${fmtDayOffset(p.atTerminal, p.depart)}`;
   setText($("leaveTime"), leave);
   setText($("barTime"), leave);
-  $("terminalTime").textContent = `Inside the terminal by ${inside} · flight at ${fmtTime(p.depart)}`;
-  $("barSub").textContent = `Inside by ${inside} · flight ${fmtTime(p.depart)}`;
+  const tight = state.strategy === "tight";
+  $("terminalTime").textContent = `${tight ? "Cutting it fine · " : ""}Inside the terminal by ${inside} · flight at ${fmtTime(p.depart)}`;
+  $("barSub").textContent = `${tight ? "Tight · " : ""}Inside by ${inside} · flight ${fmtTime(p.depart)}`;
   $("panelTotals").innerHTML = `
     <dt>Time at the airport</dt><dd>${fmtDuration(p.buffer.total)}</dd>
     <dt>Travel there (${state.commute}${state.travel === "public" ? "" : " + 30%"}${p.travelExtra ? ` + ${p.travelExtra.minutes}` : ""})</dt><dd>${fmtDuration(p.commute)}</dd>
@@ -664,11 +732,24 @@ function render() {
   const verb = Math.abs(diff) <= 10 ? "lands about the same"
              : diff > 0 ? `is ${fmtDuration(diff)} more cautious`
              : `is ${fmtDuration(-diff)} tighter`;
-  $("official").innerHTML =
+  const official =
     `<strong>${airport.full}</strong> ${airport.official.verified ? "advises" : "is generally said to want"} ` +
-    `<strong>${fmtDuration(advice)}</strong> before ${isLong ? "a long-haul" : "a short-haul"} flight. ` +
-    `This model says <strong>${fmtDuration(p.buffer.total)}</strong> — it ${verb}.` +
-    (airport.official.verified ? "" : " (Not confirmed against the airport's own guidance.)");
+    `<strong>${fmtDuration(advice)}</strong> before ${isLong ? "a long-haul" : "a short-haul"} flight.`;
+  if (tight) {
+    const recommended = computeBuffer({ ...state, strategy: "silver" }).total;
+    const risks = [state.highStakes && "you said you can't miss this flight",
+                   state.connection && "you have an onward connection"].filter(Boolean);
+    $("official").innerHTML =
+      `<strong>Cutting it fine:</strong> ${fmtDuration(p.buffer.total)} at the airport, ` +
+      `${fmtDuration(recommended - p.buffer.total)} less than the recommended plan. ` +
+      `There's no slack: one slow queue or a late bus and you miss the gate. ` +
+      `Check your airline's actual gate and bag-drop times and enter them above. ` + official +
+      (risks.length ? ` <strong>Not a good idea here — ${risks.join(" and ")}.</strong>` : "");
+  } else {
+    $("official").innerHTML = official +
+      ` This model says <strong>${fmtDuration(p.buffer.total)}</strong> — it ${verb}.` +
+      (airport.official.verified ? "" : " (Not confirmed against the airport's own guidance.)");
+  }
 
   save();
 }
@@ -681,6 +762,10 @@ $("flight").oninput = e => { state.flight = e.target.value; render(); };
 $("commute").value = state.commute;
 $("commute").oninput = e => { state.commute = Math.max(0, Number(e.target.value) || 0); commuteFromLocation = false; render(); };
 $("locate").onclick = locate;
+["gateClose", "bagClose"].forEach(id => {
+  $(id).value = state[id] || "";
+  $(id).oninput = e => { const v = Number(e.target.value); state[id] = v > 0 ? Math.min(v, 240) : null; render(); };
+});
 $("addCal").onclick = $("addCal2").onclick = downloadICS;
 $("bar").onclick = () => $("plan").scrollIntoView({ behavior: "smooth", block: "start" });
 
